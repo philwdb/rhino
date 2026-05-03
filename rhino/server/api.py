@@ -300,8 +300,16 @@ function sendVel() {
   post('/api/velocity', {vx, vy:0, omega});
 }
 
-// Heartbeat at 10 Hz — robot watchdog requires continuous commands or it stops.
-setInterval(sendVel, 100);
+// Heartbeat: re-send only while keys are held so the robot watchdog is satisfied
+// during teleop but navigator commands are not overwritten when idle.
+setInterval(() => { if (pressed.size > 0) sendVel(); }, 100);
+
+// Stop and clear stuck keys if the window loses focus.
+window.addEventListener('blur', () => {
+  pressed.clear();
+  Object.values(keyMap).forEach(k => document.getElementById('k'+k)?.classList.remove('active'));
+  post('/api/velocity', {vx:0, vy:0, omega:0});
+});
 
 document.addEventListener('keydown', e => {
   if (e.code === 'Space') { e.preventDefault(); pressed.clear(); sendVel(); return; }

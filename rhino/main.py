@@ -34,6 +34,9 @@ async def _camera_loop(platform: Platform, rerun: RerunLogger, state: AppState) 
         rerun.log_camera(frame)
 
 
+_LIDAR_LOCAL_RADIUS = 5.0  # metres — Go2 sends accumulated SLAM voxels, not per-scan
+
+
 async def _lidar_loop(
     platform: Platform,
     mapper: OccupancyMapper,
@@ -41,12 +44,19 @@ async def _lidar_loop(
     rerun: RerunLogger,
     loop: asyncio.AbstractEventLoop,
 ) -> None:
+    import numpy as np
+
     executor = None
     while True:
         scan: LidarScan = await platform.lidar_queue.get()
         pose = state.latest_pose
         if pose is not None:
-            await loop.run_in_executor(executor, mapper.update, scan, pose)
+            pts = scan.points
+            dx = pts[:, 0] - pose.x
+            dy = pts[:, 1] - pose.y
+            mask = (dx * dx + dy * dy) < _LIDAR_LOCAL_RADIUS ** 2
+            local = LidarScan(points=pts[mask], timestamp=scan.timestamp)
+            await loop.run_in_executor(executor, mapper.update, local, pose)
         rerun.log_lidar(scan)
         rerun.log_map(mapper.get_grid(), mapper.origin, mapper.resolution)
 
