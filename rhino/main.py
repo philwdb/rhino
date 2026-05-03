@@ -13,6 +13,7 @@ from rhino.config import (
     SimConfig,
     StorageConfig,
 )
+from rhino.mapping.costmap import Costmap
 from rhino.mapping.occupancy import OccupancyMapper
 from rhino.navigation.explorer import FrontierExplorer
 from rhino.navigation.planner import Navigator
@@ -85,7 +86,8 @@ async def _run(cfg: RhinoConfig) -> None:
     state = AppState()
     rerun = RerunLogger(cfg.rerun)
     mapper = OccupancyMapper(cfg.map)
-    nav = Navigator(mapper, platform, cfg.nav)
+    costmap = Costmap(mapper, cfg.map)
+    nav = Navigator(mapper, costmap, platform, cfg.nav)
     explorer = FrontierExplorer(mapper, nav)
 
     loop = asyncio.get_running_loop()

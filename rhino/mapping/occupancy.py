@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import threading
 
 import numpy as np
 from numpy.typing import NDArray
@@ -29,6 +30,7 @@ class OccupancyMapper:
         self._lo_miss = math.log(cfg.log_odds_miss / (1.0 - cfg.log_odds_miss))
         self._lo_min = math.log(cfg.log_odds_min / (1.0 - cfg.log_odds_min))
         self._lo_max = math.log(cfg.log_odds_max / (1.0 - cfg.log_odds_max))
+        self._lock = threading.Lock()
 
     def update(self, scan: LidarScan, pose: Pose) -> None:
         if scan.points.shape[0] == 0:
@@ -79,21 +81,23 @@ class OccupancyMapper:
                 hit_r.append(int(er))
                 hit_c.append(int(ec))
 
-        if free_r:
-            fr = np.concatenate(free_r)
-            fc = np.concatenate(free_c)
-            np.add.at(self._grid, (fr, fc), self._lo_miss)
+        with self._lock:
+            if free_r:
+                fr = np.concatenate(free_r)
+                fc = np.concatenate(free_c)
+                np.add.at(self._grid, (fr, fc), self._lo_miss)
 
-        if hit_r:
-            hr = np.array(hit_r, dtype=np.int32)
-            hc = np.array(hit_c, dtype=np.int32)
-            np.add.at(self._grid, (hr, hc), self._lo_hit)
+            if hit_r:
+                hr = np.array(hit_r, dtype=np.int32)
+                hc = np.array(hit_c, dtype=np.int32)
+                np.add.at(self._grid, (hr, hc), self._lo_hit)
 
-        np.clip(self._grid, self._lo_min, self._lo_max, out=self._grid)
+            np.clip(self._grid, self._lo_min, self._lo_max, out=self._grid)
 
     def get_grid(self) -> NDArray[np.float32]:
         """Occupancy probability grid: 0=free, 0.5=unknown, 1=occupied."""
-        return (1.0 / (1.0 + np.exp(-self._grid))).astype(np.float32)
+        with self._lock:
+            return (1.0 / (1.0 + np.exp(-self._grid))).astype(np.float32)
 
     @property
     def resolution(self) -> float:

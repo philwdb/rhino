@@ -1,4 +1,4 @@
-"""P-controller: pose error → (vx, vy, ω).  Phase 3 implementation."""
+"""P-controller: pose error → (vx, vy, ω)."""
 
 from __future__ import annotations
 
@@ -15,13 +15,15 @@ def compute_velocity(
     target_yaw: float | None,
     cfg: NavConfig,
 ) -> tuple[float, float, float]:
-    # TODO Phase 3: full pure-pursuit / P-controller
     dx = target_x - pose.x
     dy = target_y - pose.y
     dist = math.hypot(dx, dy)
     desired_yaw = math.atan2(dy, dx)
     heading_err = _wrap(desired_yaw - pose.yaw)
-    vx = min(cfg.kp_linear * dist, cfg.max_linear_vel)
+
+    # Scale forward speed by heading alignment — turn in place when misaligned.
+    alignment = max(0.0, math.cos(heading_err))
+    vx = min(cfg.kp_linear * dist, cfg.max_linear_vel) * alignment
     omega = max(-cfg.max_angular_vel, min(cfg.max_angular_vel, cfg.kp_angular * heading_err))
     return vx, 0.0, omega
 

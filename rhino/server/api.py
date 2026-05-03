@@ -31,6 +31,12 @@ class CmdRequest(BaseModel):
     command: str
 
 
+class NavigateRequest(BaseModel):
+    x: float
+    y: float
+    yaw: float | None = None
+
+
 class ApiServer:
     def __init__(
         self,
@@ -98,6 +104,37 @@ class ApiServer:
             }
 
         mapper = self._mapper
+        nav = self._nav
+        explorer = self._explorer
+
+        @app.post("/api/navigate")
+        async def navigate(req: NavigateRequest) -> dict[str, str]:
+            from rhino.platforms.base import Goal
+            nav.set_goal(Goal(x=req.x, y=req.y, yaw=req.yaw))
+            return {"status": "ok"}
+
+        @app.post("/api/navigate/cancel")
+        async def navigate_cancel() -> dict[str, str]:
+            nav.clear_goal()
+            return {"status": "ok"}
+
+        @app.get("/api/navigate/status")
+        async def navigate_status() -> dict[str, object]:
+            g = nav.current_goal
+            return {
+                "goal": {"x": g.x, "y": g.y, "yaw": g.yaw} if g else None,
+                "exploring": explorer.enabled,
+            }
+
+        @app.post("/api/explore/start")
+        async def explore_start() -> dict[str, str]:
+            explorer.set_enabled(True)
+            return {"status": "ok"}
+
+        @app.post("/api/explore/stop")
+        async def explore_stop() -> dict[str, str]:
+            explorer.set_enabled(False)
+            return {"status": "ok"}
 
         @app.get("/api/map")
         async def get_map() -> Response:
@@ -134,36 +171,50 @@ _TELEOP_HTML = """<!DOCTYPE html>
 <meta charset="utf-8">
 <title>rhino teleop</title>
 <style>
-  body { font-family: monospace; background: #111; color: #eee; margin: 0; padding: 24px; }
-  h2   { margin: 0 0 16px; color: #7cf; }
-  #map { display: block; image-rendering: pixelated; width: 400px; height: 400px;
-         border: 1px solid #444; margin-bottom: 16px; }
-  #pose { margin-bottom: 16px; color: #aaa; }
-  #keys { display: grid; grid-template-columns: repeat(3, 52px); gap: 4px; margin-bottom: 16px; }
-  .key  { background: #222; border: 1px solid #555; border-radius: 4px;
-          width: 48px; height: 48px; display: flex; align-items: center;
-          justify-content: center; font-size: 18px; transition: background .05s; }
+  body  { font-family: monospace; background: #111; color: #eee; margin: 0; padding: 24px; }
+  h2    { margin: 0 0 16px; color: #7cf; }
+  #map  { display: block; image-rendering: pixelated; width: 400px; height: 400px;
+          border: 1px solid #444; margin-bottom: 12px; cursor: crosshair; }
+  #pose { margin-bottom: 12px; color: #aaa; }
+  #nav-status { margin-bottom: 12px; color: #fa0; min-height: 1.2em; }
+  #keys { display: grid; grid-template-columns: repeat(3, 52px); gap: 4px; margin-bottom: 12px; }
+  .key  { background: #222; border: 1px solid #555; border-radius: 4px; width: 48px; height: 48px;
+          display: flex; align-items: center; justify-content: center; font-size: 18px; }
   .key.active { background: #7cf; color: #111; }
+  #controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  button { background: #333; color: #eee; border: 1px solid #555; border-radius: 4px;
+           padding: 6px 12px; cursor: pointer; font-family: monospace; }
+  button:hover { background: #444; }
+  button.on { background: #274; border-color: #4a4; }
   #hint { color: #555; font-size: 12px; }
 </style>
 </head>
 <body>
 <h2>rhino teleop</h2>
-<img id="map" src="/api/map" alt="map">
+<img id="map" src="/api/map" alt="map" title="Click to navigate here">
 <div id="pose">pose: —</div>
+<div id="nav-status"></div>
 <div id="keys">
-  <div></div>
-  <div class="key" id="kW">W</div>
-  <div></div>
-  <div class="key" id="kA">A</div>
-  <div class="key" id="kS">S</div>
-  <div class="key" id="kD">D</div>
+  <div></div><div class="key" id="kW">W</div><div></div>
+  <div class="key" id="kA">A</div><div class="key" id="kS">S</div><div class="key" id="kD">D</div>
 </div>
-<div id="hint">W/S forward/back &nbsp; A/D rotate &nbsp; SPACE stop</div>
+<div id="controls">
+  <button id="btn-stop" onclick="post('/api/stop')">■ Stop</button>
+  <button id="btn-cancel" onclick="post('/api/navigate/cancel')">✕ Cancel nav</button>
+  <button id="btn-explore" onclick="toggleExplore()">⟳ Explore</button>
+</div>
+<div id="hint">W/S forward/back &nbsp; A/D rotate &nbsp; SPACE stop &nbsp; click map to navigate</div>
 <script>
 const VX = 0.4, OMEGA = 0.8;
 const pressed = new Set();
 const keyMap = { KeyW:'W', KeyS:'S', KeyA:'A', KeyD:'D' };
+let exploring = false;
+
+function post(url, body) {
+  return fetch(url, { method:'POST',
+    headers: body ? {'Content-Type':'application/json'} : {},
+    body: body ? JSON.stringify(body) : undefined });
+}
 
 function sendVel() {
   let vx = 0, omega = 0;
@@ -171,11 +222,7 @@ function sendVel() {
   if (pressed.has('KeyS')) vx -= VX * 0.6;
   if (pressed.has('KeyA')) omega += OMEGA;
   if (pressed.has('KeyD')) omega -= OMEGA;
-  fetch('/api/velocity', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({vx, vy: 0, omega})
-  });
+  post('/api/velocity', {vx, vy:0, omega});
 }
 
 document.addEventListener('keydown', e => {
@@ -183,25 +230,56 @@ document.addEventListener('keydown', e => {
   if (!(e.code in keyMap) || e.repeat) return;
   e.preventDefault();
   pressed.add(e.code);
-  document.getElementById('k' + keyMap[e.code])?.classList.add('active');
+  document.getElementById('k'+keyMap[e.code])?.classList.add('active');
   sendVel();
 });
-
 document.addEventListener('keyup', e => {
   if (!(e.code in keyMap)) return;
   pressed.delete(e.code);
-  document.getElementById('k' + keyMap[e.code])?.classList.remove('active');
+  document.getElementById('k'+keyMap[e.code])?.classList.remove('active');
   sendVel();
 });
 
-// Refresh map and pose every second.
+// Click map → navigate to that world position.
+document.getElementById('map').addEventListener('click', e => {
+  const img = e.currentTarget;
+  const rect = img.getBoundingClientRect();
+  const px = (e.clientX - rect.left) / rect.width;   // 0-1
+  const py = (e.clientY - rect.top)  / rect.height;  // 0-1 (0=top=north)
+  // Map image: 400px = 20m (200 cells × 0.1m), origin at centre.
+  const x =  (px - 0.5) * 20;
+  const y = -(py - 0.5) * 20;  // flip: top of image = +y
+  post('/api/navigate', {x, y}).then(() => {
+    document.getElementById('nav-status').textContent = 'navigating → (' + x.toFixed(1) + ', ' + y.toFixed(1) + ')';
+  });
+});
+
+function toggleExplore() {
+  exploring = !exploring;
+  post(exploring ? '/api/explore/start' : '/api/explore/stop');
+  document.getElementById('btn-explore').classList.toggle('on', exploring);
+  document.getElementById('btn-explore').textContent = exploring ? '⟳ Exploring…' : '⟳ Explore';
+}
+
 setInterval(() => {
   document.getElementById('map').src = '/api/map?' + Date.now();
   fetch('/api/state').then(r => r.json()).then(d => {
     const p = d.pose;
     if (p) document.getElementById('pose').textContent =
-      'x: ' + p.x.toFixed(2) + '  y: ' + p.y.toFixed(2) +
-      '  yaw: ' + (p.yaw * 180 / Math.PI).toFixed(1) + '°';
+      'x: '+p.x.toFixed(2)+'  y: '+p.y.toFixed(2)+'  yaw: '+(p.yaw*180/Math.PI).toFixed(1)+'°';
+  });
+  fetch('/api/navigate/status').then(r => r.json()).then(d => {
+    if (d.goal) {
+      document.getElementById('nav-status').textContent =
+        'navigating → ('+d.goal.x.toFixed(1)+', '+d.goal.y.toFixed(1)+')';
+    } else if (!exploring) {
+      document.getElementById('nav-status').textContent = '';
+    }
+    if (d.exploring !== exploring) {
+      exploring = d.exploring;
+      document.getElementById('btn-explore').classList.toggle('on', exploring);
+      document.getElementById('btn-explore').textContent = exploring ? '⟳ Exploring…' : '⟳ Explore';
+    }
   });
 }, 1000);
 </script>
