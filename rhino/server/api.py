@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import io
+
+import cv2
+import numpy as np
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 
 from rhino.config import ServerConfig
@@ -92,7 +97,21 @@ class ApiServer:
                 },
             }
 
-        # TODO Phase 4: /api/events (SSE), /api/map, /api/pov,
+        mapper = self._mapper
+
+        @app.get("/api/map")
+        async def get_map() -> Response:
+            grid = mapper.get_grid()                        # float32 0-1
+            img = (255.0 * (1.0 - grid)).astype(np.uint8)  # free=white, occ=black
+            img = img[::-1, :]                              # north-up
+            _, buf = cv2.imencode(".png", img)
+            return Response(content=buf.tobytes(), media_type="image/png")
+
+        @app.get("/", response_class=HTMLResponse)
+        async def teleop_ui() -> str:
+            return _TELEOP_HTML
+
+        # TODO Phase 4: /api/events (SSE), /api/pov,
         #               /api/navigate, /api/explore,
         #               /api/pois CRUD + navigation
 
@@ -107,3 +126,84 @@ class ApiServer:
         )
         server = uvicorn.Server(config)
         await server.serve()
+
+
+_TELEOP_HTML = """<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>rhino teleop</title>
+<style>
+  body { font-family: monospace; background: #111; color: #eee; margin: 0; padding: 24px; }
+  h2   { margin: 0 0 16px; color: #7cf; }
+  #map { display: block; image-rendering: pixelated; width: 400px; height: 400px;
+         border: 1px solid #444; margin-bottom: 16px; }
+  #pose { margin-bottom: 16px; color: #aaa; }
+  #keys { display: grid; grid-template-columns: repeat(3, 52px); gap: 4px; margin-bottom: 16px; }
+  .key  { background: #222; border: 1px solid #555; border-radius: 4px;
+          width: 48px; height: 48px; display: flex; align-items: center;
+          justify-content: center; font-size: 18px; transition: background .05s; }
+  .key.active { background: #7cf; color: #111; }
+  #hint { color: #555; font-size: 12px; }
+</style>
+</head>
+<body>
+<h2>rhino teleop</h2>
+<img id="map" src="/api/map" alt="map">
+<div id="pose">pose: —</div>
+<div id="keys">
+  <div></div>
+  <div class="key" id="kW">W</div>
+  <div></div>
+  <div class="key" id="kA">A</div>
+  <div class="key" id="kS">S</div>
+  <div class="key" id="kD">D</div>
+</div>
+<div id="hint">W/S forward/back &nbsp; A/D rotate &nbsp; SPACE stop</div>
+<script>
+const VX = 0.4, OMEGA = 0.8;
+const pressed = new Set();
+const keyMap = { KeyW:'W', KeyS:'S', KeyA:'A', KeyD:'D' };
+
+function sendVel() {
+  let vx = 0, omega = 0;
+  if (pressed.has('KeyW')) vx += VX;
+  if (pressed.has('KeyS')) vx -= VX * 0.6;
+  if (pressed.has('KeyA')) omega += OMEGA;
+  if (pressed.has('KeyD')) omega -= OMEGA;
+  fetch('/api/velocity', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({vx, vy: 0, omega})
+  });
+}
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); pressed.clear(); sendVel(); return; }
+  if (!(e.code in keyMap) || e.repeat) return;
+  e.preventDefault();
+  pressed.add(e.code);
+  document.getElementById('k' + keyMap[e.code])?.classList.add('active');
+  sendVel();
+});
+
+document.addEventListener('keyup', e => {
+  if (!(e.code in keyMap)) return;
+  pressed.delete(e.code);
+  document.getElementById('k' + keyMap[e.code])?.classList.remove('active');
+  sendVel();
+});
+
+// Refresh map and pose every second.
+setInterval(() => {
+  document.getElementById('map').src = '/api/map?' + Date.now();
+  fetch('/api/state').then(r => r.json()).then(d => {
+    const p = d.pose;
+    if (p) document.getElementById('pose').textContent =
+      'x: ' + p.x.toFixed(2) + '  y: ' + p.y.toFixed(2) +
+      '  yaw: ' + (p.yaw * 180 / Math.PI).toFixed(1) + '°';
+  });
+}, 1000);
+</script>
+</body>
+</html>"""
