@@ -89,8 +89,7 @@ Go2 WebRTC connection · Mujoco subprocess + SHM pattern · 2D log-odds occupanc
 
 ```
 rhino/
-├── pyproject.toml               # uv · entry: rhino = "rhino.main:cli"
-├── .python-version              # 3.12
+├── pyproject.toml               # uv · entry: rhino = "rhino.main:app"
 ├── rhino/
 │   ├── main.py                  # wires all components; nothing else does
 │   ├── config.py                # nested dataclasses (RhinoConfig → MapConfig, NavConfig, …)
@@ -99,28 +98,34 @@ rhino/
 │   │   ├── base.py              # Platform protocol + CameraFrame, LidarScan, Pose, Goal, RobotStatus, POI
 │   │   └── go2/
 │   │       ├── robot.py         # Go2Platform — real robot via unitree-webrtc-connect-leshy
-│   │       ├── sim.py           # MujocoGo2 — subprocess + SHM
-│   │       └── skills.py        # relative_move, standup, liedown, execute_sport
+│   │       ├── sim/             # MujocoGo2 — subprocess + SHM
+│   │       └── skills.py        # standup, liedown, execute_sport
 │   ├── mapping/
 │   │   ├── occupancy.py         # log-odds 2D grid, dynamic extent, raycasting
 │   │   └── costmap.py           # obstacle inflation
 │   ├── navigation/
-│   │   ├── planner.py           # A* on costmap
-│   │   ├── controller.py        # P-controller: pose error → (vx, vy, ω)
+│   │   ├── planner.py           # A* on costmap + P-controller path following
+│   │   ├── controller.py        # pose error → (vx, vy, ω)
 │   │   └── explorer.py          # BFS frontier detection + loop
 │   ├── viz/
 │   │   └── rerun.py             # RerunLogger — every rr.log() call lives here
 │   └── server/
-│       ├── api.py               # FastAPI: REST + SSE
+│       ├── api.py               # FastAPI: REST endpoints + legacy embedded teleop UI
 │       ├── mcp.py               # McpServer (mcp SDK, tools registered in __init__)
-│       └── state.py             # AppState: asyncio.Lock-protected shared state
-└── web/
+│       └── state.py             # AppState: latest pose, camera, status
+└── web/                         # React + Vite dev frontend (port 5173)
+    ├── package.json
+    ├── vite.config.ts           # proxies /api → localhost:8000
     └── src/
-        ├── Dashboard.tsx        # map left, POI list right
-        ├── MapPane.tsx          # canvas: occupancy + robot pose + path + POI markers; click to tag
-        ├── RobotPanel.tsx       # battery, temps, IMU, velocity joystick
-        ├── Mission.tsx          # active goal + progress
-        └── types.ts / hooks.ts / utils.ts
+        ├── App.tsx              # root: state polling, page routing (Dashboard | Plan)
+        ├── types.ts             # TypeScript interfaces matching API responses
+        ├── styles.css
+        └── components/
+            ├── Topbar.tsx       # nav tabs, explore/mode/stop actions
+            ├── RobotFleet.tsx   # left sidebar: robot cards (add robots here for bimanual)
+            ├── MapPane.tsx      # occupancy map + SVG overlays + pan/zoom
+            ├── RobotPanel.tsx   # right panel: camera stream, WASD teleop, sport commands
+            └── PlanSidebar.tsx  # POI list + click-to-place on map
 ```
 
 No `perception/` directory. POIs are manually tagged by the user — no automatic detection.
@@ -214,18 +219,25 @@ world/pois/{id}     — Points3D + label
 ### Web API
 
 ```
-GET    /api/state            full AppState snapshot (includes POI list)
-GET    /api/events           SSE: pose_update | map_update | status_update | poi_update
-GET    /api/map              occupancy grid as PNG
-GET    /api/pov              latest camera frame as JPEG
-POST   /api/navigate         {x, y, yaw}
-POST   /api/explore          {enabled: bool}
-POST   /api/velocity         {vx, vy, omega}
-POST   /api/cmd/{command}    standup | liedown | sport command
-GET    /api/pois             list all POIs
-POST   /api/pois             {label, x, y} — tag a point; z defaults to 0
-DELETE /api/pois/{id}        remove a POI
-POST   /api/pois/{id}/go     navigate to POI (background task)
+GET    /api/state               pose, status (battery, mode, is_standing, vx/vy/ω), path
+GET    /api/map                 occupancy PNG with robot + path baked in (legacy teleop UI)
+GET    /api/map/raw             clean occupancy PNG — used by the React frontend
+GET    /api/map/info            {origin_x, origin_y, resolution, width, height}
+GET    /api/camera/stream       MJPEG stream at up to 30 fps
+POST   /api/navigate            {x, y, yaw?}
+POST   /api/navigate/cancel     stop navigation and clear goal
+GET    /api/navigate/status     {goal, exploring, mode}
+POST   /api/navigate/mode       {mode: "astar" | "direct"}
+POST   /api/explore/start       enable frontier exploration
+POST   /api/explore/stop        disable frontier exploration
+POST   /api/velocity            {vx, vy, omega}
+POST   /api/stop                zero velocity + cancel navigation
+POST   /api/cmd/{command}       sport command (StandUp, Dance1, FrontFlip, …)
+GET    /api/pois                list saved POIs
+POST   /api/pois                {label, x?, y?} — x/y defaults to current pose
+DELETE /api/pois/{id}           remove POI
+POST   /api/pois/{id}/navigate  navigate to POI
+GET    /api/health              {"status": "ok"}
 ```
 
 ---
@@ -252,12 +264,21 @@ No `openai`, no `open3d`, no `aiohttp`, no `dimos-lcm`.
 
 ## Running
 
+**Requirements:** [uv](https://docs.astral.sh/uv/) · Node.js 18+
+
 ```bash
+# Backend
 uv sync
-uv run rhino --sim                         # sim: all servers + Rerun viewer
-uv run rhino --robot-ip 192.168.123.161    # real robot
-cd web && npm run dev                      # Vite dev server, proxies /api to :8000
+uv run rhino --sim                          # simulation (MuJoCo)
+uv run rhino --robot-ip 192.168.123.161     # real Go2
+
+# Dev frontend (separate terminal) — proxies /api → localhost:8000
+cd web
+npm install                                 # first time only
+npm run dev                                 # http://localhost:5173
 ```
+
+The legacy single-page teleop UI is still served at `http://localhost:8000` by the backend.
 
 ---
 
