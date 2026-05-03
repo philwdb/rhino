@@ -93,7 +93,15 @@ class Navigator:
 
             if self._mode is PlanMode.DIRECT:
                 self._path = [(pose.x, pose.y), (goal.x, goal.y)]
-                tx, ty = _lookahead(self._path, pose.x, pose.y, self._cfg.lookahead_distance)
+                # Interpolate lookahead along the direct segment (not waypoint scan).
+                dx = goal.x - pose.x
+                dy = goal.y - pose.y
+                d = math.hypot(dx, dy)
+                if d > self._cfg.lookahead_distance:
+                    t = self._cfg.lookahead_distance / d
+                    tx, ty = pose.x + dx * t, pose.y + dy * t
+                else:
+                    tx, ty = goal.x, goal.y
                 vx, vy, omega = compute_velocity(pose, tx, ty, None, self._cfg)
             else:
                 now = loop.time()

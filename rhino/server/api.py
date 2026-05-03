@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import math
 
 import cv2
@@ -9,7 +10,7 @@ import numpy as np
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from rhino.config import ServerConfig
@@ -97,17 +98,21 @@ class ApiServer:
         @app.get("/api/state")
         async def get_state() -> dict[str, object]:
             pose = state.latest_pose
+            status = state.latest_status
             return {
                 "pose": (
                     {"x": pose.x, "y": pose.y, "yaw": pose.yaw}
                     if pose else None
                 ),
                 "status": {
-                    "mode": state.latest_status.mode,
-                    "vx": state.latest_status.vx,
-                    "vy": state.latest_status.vy,
-                    "omega": state.latest_status.omega,
+                    "mode": status.mode,
+                    "is_standing": status.is_standing,
+                    "battery_pct": status.battery_pct,
+                    "vx": status.vx,
+                    "vy": status.vy,
+                    "omega": status.omega,
                 },
+                "path": [[x, y] for x, y in nav.current_path],
             }
 
         mapper = self._mapper
@@ -220,6 +225,44 @@ class ApiServer:
 
             _, buf = cv2.imencode(".png", img)
             return Response(content=buf.tobytes(), media_type="image/png")
+
+        @app.get("/api/map/raw")
+        async def get_map_raw() -> Response:
+            grid = mapper.get_grid()
+            gray = (255.0 * (1.0 - grid)).astype(np.uint8)
+            gray = gray[::-1, :]  # north-up
+            _, buf = cv2.imencode(".png", gray)
+            return Response(content=buf.tobytes(), media_type="image/png")
+
+        @app.get("/api/map/info")
+        async def map_info() -> dict[str, object]:
+            ox, oy = mapper.origin
+            H, W = mapper.shape
+            return {
+                "origin_x": ox,
+                "origin_y": oy,
+                "resolution": mapper.resolution,
+                "width": W,
+                "height": H,
+            }
+
+        @app.get("/api/camera/stream")
+        async def camera_stream() -> StreamingResponse:
+            async def generate():
+                while True:
+                    frame = state.latest_camera
+                    if frame is not None:
+                        yield (
+                            b"--frame\r\n"
+                            b"Content-Type: image/jpeg\r\n\r\n"
+                            + frame.data
+                            + b"\r\n"
+                        )
+                    await asyncio.sleep(1 / 30)
+            return StreamingResponse(
+                generate(),
+                media_type="multipart/x-mixed-replace;boundary=frame",
+            )
 
         @app.get("/", response_class=HTMLResponse)
         async def teleop_ui() -> str:

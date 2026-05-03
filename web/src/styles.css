@@ -1,0 +1,339 @@
+:root {
+  --bg: #0d0d10;
+  --surface: #13131a;
+  --card: #1a1a24;
+  --border: #25252f;
+  --accent: #60a5fa;
+  --accent-dim: #1a2e4a;
+  --text: #dde0ec;
+  --muted: #5c5c72;
+  --green: #4ade80;
+  --orange: #fb923c;
+  --red: #f87171;
+  --yellow: #fbbf24;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  height: 100vh;
+  overflow: hidden;
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--text);
+  padding: 5px 10px;
+  transition: background 0.1s;
+}
+button:hover { background: #252530; }
+button:active { background: #2e2e3c; }
+button.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+button.danger { border-color: var(--red); color: var(--red); }
+button.danger:hover { background: #2a1a1a; }
+
+/* ── App shell ──────────────────────────────────────── */
+.app { display: flex; flex-direction: column; height: 100vh; }
+
+/* ── Topbar ─────────────────────────────────────────── */
+.topbar {
+  height: 48px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  flex-shrink: 0;
+  z-index: 20;
+}
+.topbar-brand {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  margin-right: 4px;
+}
+.topbar-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+.topbar-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.topbar-nav { display: flex; gap: 2px; margin-left: 8px; }
+.topbar-nav button {
+  background: none; border: none;
+  color: var(--muted); padding: 5px 10px;
+  border-radius: 6px; font-size: 13px;
+}
+.topbar-nav button.active { background: var(--card); color: var(--text); border-color: transparent; }
+.topbar-spacer { flex: 1; }
+.topbar-actions { display: flex; gap: 6px; align-items: center; }
+
+.badge {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px; border-radius: 100px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.03em;
+  border: 1px solid;
+}
+.badge-orange { color: var(--orange); border-color: #7c3b14; background: #2a1a0a; }
+.badge-blue   { color: var(--accent); border-color: #1a3a6a; background: #0a1a2a; }
+.badge-green  { color: var(--green);  border-color: #145c30; background: #0a2a1a; }
+.badge-muted  { color: var(--muted);  border-color: var(--border); background: var(--card); }
+
+/* ── Layout ─────────────────────────────────────────── */
+.layout { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Robot Fleet (Dashboard left) ───────────────────── */
+.robot-fleet {
+  width: 210px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+.fleet-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 6px;
+  flex-shrink: 0;
+}
+.fleet-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.fleet-count {
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 1px 6px;
+  color: var(--muted);
+}
+
+.robot-card {
+  margin: 4px 8px;
+  padding: 10px 10px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.robot-card:hover { background: #20202c; }
+.robot-card.selected {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.robot-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.status-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+.status-dot.connected { background: var(--green); box-shadow: 0 0 5px var(--green); }
+.robot-card-name {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.robot-card-chevron {
+  color: var(--muted);
+  font-size: 14px;
+  transition: transform 0.15s;
+}
+.robot-card.selected .robot-card-chevron {
+  color: var(--accent);
+  transform: translateX(2px);
+}
+
+.robot-card-stats { margin-top: 6px; }
+.robot-card-stats .stat-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 1px 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.robot-card-stats .stat-row span:last-child {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Plan Sidebar ────────────────────────────────────── */
+.sidebar {
+  width: 240px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  flex-shrink: 0;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.card-title {
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted); margin-bottom: 8px;
+}
+
+.stat-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 2px 0; color: var(--muted);
+}
+.stat-row span:last-child { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.battery-bar {
+  height: 5px; border-radius: 3px;
+  background: var(--border); overflow: hidden;
+}
+.battery-fill {
+  height: 100%; border-radius: 3px;
+  background: var(--green); transition: width 0.5s;
+}
+.battery-fill.low { background: var(--orange); }
+.battery-fill.critical { background: var(--red); }
+
+.poi-list { display: flex; flex-direction: column; gap: 4px; }
+.poi-item {
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px 6px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--bg);
+}
+.poi-label { flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.poi-coords { font-size: 10px; color: var(--muted); flex-shrink: 0; }
+.poi-item button { padding: 2px 6px; font-size: 11px; }
+
+.poi-create-form { display: flex; gap: 4px; }
+.poi-create-form input {
+  flex: 1; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); padding: 4px 8px;
+  font-family: inherit; font-size: 12px; outline: none;
+}
+.poi-create-form input:focus { border-color: var(--accent); }
+
+/* ── Main ────────────────────────────────────────────── */
+.main { flex: 1; position: relative; overflow: hidden; background: var(--bg); }
+
+/* ── MapPane ─────────────────────────────────────────── */
+.map-viewport {
+  width: 100%; height: 100%;
+  overflow: hidden; position: relative;
+  cursor: grab;
+}
+.map-viewport.dragging { cursor: grabbing; }
+.map-canvas {
+  position: absolute; transform-origin: 0 0; user-select: none;
+}
+.map-canvas img { display: block; image-rendering: pixelated; }
+.map-canvas svg {
+  position: absolute; top: 0; left: 0;
+  overflow: visible; pointer-events: none;
+}
+.map-hint {
+  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+  font-size: 11px; color: var(--muted);
+  background: rgba(13,13,16,0.8); padding: 4px 10px;
+  border-radius: 100px; pointer-events: none; white-space: nowrap;
+}
+
+/* ── Robot Panel (Dashboard right) ──────────────────── */
+.robot-panel {
+  width: 280px;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.robot-panel-header {
+  display: flex; align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  gap: 8px; flex-shrink: 0;
+}
+.robot-panel-title { flex: 1; font-weight: 600; font-size: 13px; color: var(--text); }
+.robot-panel-chevron { color: var(--muted); font-size: 10px; }
+.panel-divider { height: 1px; background: var(--border); flex-shrink: 0; }
+.robot-panel-body { overflow-y: auto; flex: 1; }
+
+/* ── Camera ──────────────────────────────────────────── */
+.camera-feed {
+  width: 100%; aspect-ratio: 16/9;
+  object-fit: cover; display: block; background: #000;
+}
+.camera-placeholder {
+  width: 100%; aspect-ratio: 16/9;
+  background: #050508; display: flex;
+  align-items: center; justify-content: center;
+  color: var(--muted); font-size: 12px;
+}
+
+/* ── Teleop ──────────────────────────────────────────── */
+.teleop-tab { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 40px);
+  grid-template-rows: repeat(3, 40px);
+  gap: 4px; margin: 0 auto;
+}
+.dpad button {
+  width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; padding: 0; border-radius: 7px;
+}
+.dpad button.pressed { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+.dpad-empty { background: none !important; border: none !important; pointer-events: none; }
+.teleop-hint { font-size: 11px; color: var(--muted); text-align: center; }
+
+/* ── Commands ────────────────────────────────────────── */
+.commands-tab { padding: 8px 10px; }
+.cmd-group { margin-bottom: 8px; }
+.cmd-group-label {
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted); margin-bottom: 5px;
+}
+.cmd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+.cmd-grid button { font-size: 11px; padding: 5px 4px; }
