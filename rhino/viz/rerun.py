@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
+from numpy.typing import NDArray
 import rerun as rr
 import rerun.blueprint as rrb
 
@@ -17,12 +18,14 @@ class RerunLogger:
         rr.init(cfg.app_id, spawn=not cfg.connect)
         if cfg.connect:
             rr.connect()
-        # One 3-D world view + one 2-D camera view, no Rerun auto-layout.
         rr.send_blueprint(
             rrb.Blueprint(
                 rrb.Horizontal(
                     rrb.Spatial3DView(name="World", origin="/world"),
-                    rrb.Spatial2DView(name="Robot View", origin="/camera"),
+                    rrb.Vertical(
+                        rrb.Spatial2DView(name="Map", origin="/map"),
+                        rrb.Spatial2DView(name="Robot View", origin="/camera"),
+                    ),
                 ),
                 auto_views=False,
             )
@@ -51,7 +54,6 @@ class RerunLogger:
                 rotation=rr.Quaternion(xyzw=[0.0, 0.0, quat_z, quat_w]),
             ),
         )
-        # Robot footprint box in local frame (~Go1/Go2 trunk dimensions).
         rr.log(
             "world/robot/body",
             rr.Boxes3D(
@@ -60,7 +62,6 @@ class RerunLogger:
                 colors=[[60, 180, 100, 200]],
             ),
         )
-        # Heading arrow along +x.
         rr.log(
             "world/robot/heading",
             rr.Arrows3D(
@@ -69,3 +70,14 @@ class RerunLogger:
                 colors=[[255, 120, 0, 255]],
             ),
         )
+
+    def log_map(
+        self,
+        grid: NDArray[np.float32],
+        origin: tuple[float, float],
+        resolution: float,
+    ) -> None:
+        # Greyscale: free→white(255), unknown→grey(128), occupied→black(0).
+        img = (255.0 * (1.0 - grid)).astype(np.uint8)
+        # Flip rows so that map north (max y) is at the top of the image.
+        rr.log("map/occupancy", rr.Image(img[::-1, :]))

@@ -47,6 +47,7 @@ async def _lidar_loop(
         if pose is not None:
             await loop.run_in_executor(executor, mapper.update, scan, pose)
         rerun.log_lidar(scan)
+        rerun.log_map(mapper.get_grid(), mapper.origin, mapper.resolution)
 
 
 async def _odom_loop(
