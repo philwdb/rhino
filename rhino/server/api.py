@@ -244,13 +244,13 @@ _TELEOP_HTML = """<!DOCTYPE html>
 <meta charset="utf-8">
 <title>rhino teleop</title>
 <style>
-  body  { font-family: monospace; background: #111; color: #eee; margin: 0; padding: 24px; }
-  h2    { margin: 0 0 16px; color: #7cf; }
+  body  { font-family: monospace; background: #111; color: #eee; margin: 0; padding: 24px; display: flex; gap: 24px; flex-wrap: wrap; }
+  h2    { margin: 0 0 12px; color: #7cf; width: 100%; }
+  #left { display: flex; flex-direction: column; }
   #map  { display: block; image-rendering: pixelated; width: 400px; height: 400px;
-          border: 1px solid #444; margin-bottom: 12px; cursor: crosshair; }
-  #pose { margin-bottom: 12px; color: #aaa; }
-  #nav-status { margin-bottom: 12px; color: #fa0; min-height: 1.2em; }
-  #keys { display: grid; grid-template-columns: repeat(3, 52px); gap: 4px; margin-bottom: 12px; }
+          border: 1px solid #444; margin-bottom: 10px; cursor: crosshair; }
+  #nav-status { color: #fa0; min-height: 1.2em; margin-bottom: 8px; }
+  #keys { display: grid; grid-template-columns: repeat(3, 52px); gap: 4px; margin-bottom: 10px; }
   .key  { background: #222; border: 1px solid #555; border-radius: 4px; width: 48px; height: 48px;
           display: flex; align-items: center; justify-content: center; font-size: 18px; }
   .key.active { background: #7cf; color: #111; }
@@ -259,36 +259,102 @@ _TELEOP_HTML = """<!DOCTYPE html>
            padding: 6px 12px; cursor: pointer; font-family: monospace; }
   button:hover { background: #444; }
   button.on { background: #274; border-color: #4a4; }
-  #hint { color: #555; font-size: 12px; }
+  #hint { color: #555; font-size: 11px; }
+
+  /* debug panel */
+  #debug { display: flex; flex-direction: column; gap: 12px; min-width: 220px; }
+  .dbg-box { background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 12px; }
+  .dbg-title { color: #7cf; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .dbg-row { display: flex; justify-content: space-between; color: #aaa; margin: 3px 0; }
+  .dbg-val { color: #ffe; font-weight: bold; }
+  .dbg-val.pos { color: #4f4; }
+  .dbg-val.neg { color: #f44; }
+  #compass { display: block; margin: 8px auto 0; }
 </style>
 </head>
 <body>
 <h2>rhino teleop</h2>
-<img id="map" src="/api/map" alt="map" title="Click to navigate here">
-<div id="pose">pose: —</div>
-<div id="nav-status"></div>
-<div id="keys">
-  <div></div><div class="key" id="kW">W</div><div></div>
-  <div class="key" id="kA">A</div><div class="key" id="kS">S</div><div class="key" id="kD">D</div>
+
+<div id="left">
+  <img id="map" src="/api/map" alt="map" title="Click to navigate here">
+  <div id="nav-status"></div>
+  <div id="keys">
+    <div></div><div class="key" id="kW">W</div><div></div>
+    <div class="key" id="kA">A</div><div class="key" id="kS">S</div><div class="key" id="kD">D</div>
+  </div>
+  <div id="controls">
+    <button id="btn-stop" onclick="post('/api/stop')">■ Stop</button>
+    <button id="btn-cancel" onclick="post('/api/navigate/cancel')">✕ Cancel nav</button>
+    <button id="btn-explore" onclick="toggleExplore()">⟳ Explore</button>
+    <button id="btn-mode" onclick="toggleMode()">mode: A*</button>
+  </div>
+  <div id="hint">W/S forward/back &nbsp; A/D rotate &nbsp; SPACE stop &nbsp; click map to navigate</div>
 </div>
-<div id="controls">
-  <button id="btn-stop" onclick="post('/api/stop')">■ Stop</button>
-  <button id="btn-cancel" onclick="post('/api/navigate/cancel')">✕ Cancel nav</button>
-  <button id="btn-explore" onclick="toggleExplore()">⟳ Explore</button>
-  <button id="btn-mode" onclick="toggleMode()">mode: A*</button>
+
+<div id="debug">
+  <div class="dbg-box">
+    <div class="dbg-title">Pose (odometry)</div>
+    <div class="dbg-row"><span>x</span><span class="dbg-val" id="d-x">—</span></div>
+    <div class="dbg-row"><span>y</span><span class="dbg-val" id="d-y">—</span></div>
+    <div class="dbg-row"><span>yaw</span><span class="dbg-val" id="d-yaw">—</span></div>
+    <canvas id="compass" width="80" height="80"></canvas>
+    <div style="color:#555;font-size:10px;text-align:center;margin-top:4px">
+      W=forward → x↑ or y↑?<br>A=left → yaw↑ or ↓?
+    </div>
+  </div>
+  <div class="dbg-box">
+    <div class="dbg-title">Velocity sent</div>
+    <div class="dbg-row"><span>vx (forward)</span><span class="dbg-val" id="d-vx">0.00</span></div>
+    <div class="dbg-row"><span>omega (turn)</span><span class="dbg-val" id="d-omega">0.00</span></div>
+  </div>
+  <div class="dbg-box">
+    <div class="dbg-title">Navigation</div>
+    <div class="dbg-row"><span>goal x</span><span class="dbg-val" id="d-gx">—</span></div>
+    <div class="dbg-row"><span>goal y</span><span class="dbg-val" id="d-gy">—</span></div>
+    <div class="dbg-row"><span>mode</span><span class="dbg-val" id="d-mode">—</span></div>
+    <div class="dbg-row"><span>exploring</span><span class="dbg-val" id="d-exp">—</span></div>
+  </div>
 </div>
-<div id="hint">W/S forward/back &nbsp; A/D rotate &nbsp; SPACE stop &nbsp; click map to navigate</div>
+
 <script>
 const VX = 0.4, OMEGA = 0.8;
 const pressed = new Set();
 const keyMap = { KeyW:'W', KeyS:'S', KeyA:'A', KeyD:'D' };
 let exploring = false;
 let planMode = 'astar';
+let lastVx = 0, lastOmega = 0;
 
 function post(url, body) {
   return fetch(url, { method:'POST',
     headers: body ? {'Content-Type':'application/json'} : {},
     body: body ? JSON.stringify(body) : undefined });
+}
+
+function val(id, v, decimals=2) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = typeof v === 'number' ? v.toFixed(decimals) : v;
+  el.className = 'dbg-val' + (typeof v === 'number' && v > 0.005 ? ' pos' : typeof v === 'number' && v < -0.005 ? ' neg' : '');
+}
+
+function drawCompass(yawRad) {
+  const c = document.getElementById('compass');
+  const ctx = c.getContext('2d');
+  const cx = 40, cy = 40, r = 32;
+  ctx.clearRect(0, 0, 80, 80);
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2*Math.PI); ctx.stroke();
+  // N label (top = +y in world = screen up)
+  ctx.fillStyle = '#555'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+  ctx.fillText('N(+y)', cx, cy - r - 2);
+  ctx.fillText('E(+x)', cx + r + 2, cy + 4);
+  // heading arrow — yaw=0 points right (+x), yaw=π/2 points up (+y)
+  const ax = cx + r * 0.8 * Math.cos(-yawRad);
+  const ay = cy + r * 0.8 * Math.sin(-yawRad);  // canvas y is inverted
+  ctx.strokeStyle = '#7cf'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ax, ay); ctx.stroke();
+  ctx.fillStyle = '#7cf';
+  ctx.beginPath(); ctx.arc(ax, ay, 3, 0, 2*Math.PI); ctx.fill();
 }
 
 function sendVel() {
@@ -297,6 +363,8 @@ function sendVel() {
   if (pressed.has('KeyS')) vx -= VX * 0.6;
   if (pressed.has('KeyA')) omega += OMEGA;
   if (pressed.has('KeyD')) omega -= OMEGA;
+  lastVx = vx; lastOmega = omega;
+  val('d-vx', vx); val('d-omega', omega);
   post('/api/velocity', {vx, vy:0, omega});
 }
 
@@ -309,6 +377,7 @@ window.addEventListener('blur', () => {
   pressed.clear();
   Object.values(keyMap).forEach(k => document.getElementById('k'+k)?.classList.remove('active'));
   post('/api/velocity', {vx:0, vy:0, omega:0});
+  val('d-vx', 0); val('d-omega', 0);
 });
 
 document.addEventListener('keydown', e => {
@@ -330,11 +399,10 @@ document.addEventListener('keyup', e => {
 document.getElementById('map').addEventListener('click', e => {
   const img = e.currentTarget;
   const rect = img.getBoundingClientRect();
-  const px = (e.clientX - rect.left) / rect.width;   // 0-1
-  const py = (e.clientY - rect.top)  / rect.height;  // 0-1 (0=top=north)
-  // Map image: 400px = 20m (200 cells × 0.1m), origin at centre.
+  const px = (e.clientX - rect.left) / rect.width;
+  const py = (e.clientY - rect.top)  / rect.height;
   const x =  (px - 0.5) * 20;
-  const y = -(py - 0.5) * 20;  // flip: top of image = +y
+  const y = -(py - 0.5) * 20;
   post('/api/navigate', {x, y}).then(() => {
     document.getElementById('nav-status').textContent = 'navigating → (' + x.toFixed(1) + ', ' + y.toFixed(1) + ')';
   });
@@ -354,20 +422,32 @@ function toggleMode() {
   document.getElementById('btn-mode').classList.toggle('on', planMode === 'direct');
 }
 
+// Poll at 5 Hz for responsive debug display.
 setInterval(() => {
   document.getElementById('map').src = '/api/map?' + Date.now();
   fetch('/api/state').then(r => r.json()).then(d => {
     const p = d.pose;
-    if (p) document.getElementById('pose').textContent =
-      'x: '+p.x.toFixed(2)+'  y: '+p.y.toFixed(2)+'  yaw: '+(p.yaw*180/Math.PI).toFixed(1)+'°';
+    if (p) {
+      val('d-x', p.x);
+      val('d-y', p.y);
+      const deg = p.yaw * 180 / Math.PI;
+      document.getElementById('d-yaw').textContent = deg.toFixed(1) + '°';
+      document.getElementById('d-yaw').className = 'dbg-val';
+      drawCompass(p.yaw);
+    }
   });
   fetch('/api/navigate/status').then(r => r.json()).then(d => {
     if (d.goal) {
       document.getElementById('nav-status').textContent =
         'navigating → ('+d.goal.x.toFixed(1)+', '+d.goal.y.toFixed(1)+')';
-    } else if (!exploring) {
-      document.getElementById('nav-status').textContent = '';
+      val('d-gx', d.goal.x); val('d-gy', d.goal.y);
+    } else {
+      if (!exploring) document.getElementById('nav-status').textContent = '';
+      document.getElementById('d-gx').textContent = '—';
+      document.getElementById('d-gy').textContent = '—';
     }
+    document.getElementById('d-mode').textContent = d.mode || '—';
+    document.getElementById('d-exp').textContent = d.exploring ? 'yes' : 'no';
     if (d.exploring !== exploring) {
       exploring = d.exploring;
       document.getElementById('btn-explore').classList.toggle('on', exploring);
@@ -379,7 +459,7 @@ setInterval(() => {
       document.getElementById('btn-mode').classList.toggle('on', planMode === 'direct');
     }
   });
-}, 1000);
+}, 200);
 </script>
 </body>
 </html>"""

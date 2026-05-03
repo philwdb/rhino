@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 import time
 from typing import Any
 
 import cv2
 import numpy as np
+
+# Go2 H264 stream starts mid-GOP so the first ~10 packets fail until the
+# decoder receives a keyframe.  Downgrade to ERROR so the terminal isn't flooded.
+logging.getLogger("aiortc.codecs.h264").setLevel(logging.ERROR)
 
 from rhino.config import RobotConfig
 from rhino.platforms.base import CameraFrame, LidarScan, Pose, RobotStatus
