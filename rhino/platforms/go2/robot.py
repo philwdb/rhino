@@ -136,29 +136,37 @@ class Go2Platform:
 
         self._conn.video.switchVideoChannel(True)
 
-        # Stand up in case robot is in StandDown from a previous session.
-        ps.publish_without_callback(
-            RTC_TOPIC["SPORT_MOD"],
-            data={"header": {"identity": {"id": 1, "api_id": SPORT_CMD["StandUp"]}}, "parameter": ""},
-            msg_type="req",
-        )
-        await asyncio.sleep(2.0)
+        # Stand up if robot is in StandDown from a previous session.
+        # Must use publish_request_new (awaited) so the robot properly acks the
+        # sport command before we start sending velocity commands.
+        try:
+            await asyncio.wait_for(
+                ps.publish_request_new(
+                    RTC_TOPIC["SPORT_MOD"],
+                    {"api_id": SPORT_CMD["RecoveryStand"]},
+                ),
+                timeout=5.0,
+            )
+            await asyncio.sleep(2.0)  # let the stand-up motion complete
+        except Exception:
+            pass  # already standing — RecoveryStand is a no-op in that case
 
     async def stop(self) -> None:
         if self._conn is not None:
             try:
-                # Stop moving then sit before disconnecting.
                 ps = self._conn.datachannel.pub_sub
                 ps.publish_without_callback(
                     self._RTC_TOPIC["WIRELESS_CONTROLLER"],
                     data={"lx": 0.0, "ly": 0.0, "rx": 0.0, "ry": 0.0},
                 )
-                ps.publish_without_callback(
-                    self._RTC_TOPIC["SPORT_MOD"],
-                    data={"header": {"identity": {"id": 1, "api_id": self._SPORT_CMD["StandDown"]}}, "parameter": ""},
-                    msg_type="req",
+                await asyncio.wait_for(
+                    ps.publish_request_new(
+                        self._RTC_TOPIC["SPORT_MOD"],
+                        {"api_id": self._SPORT_CMD["StandDown"]},
+                    ),
+                    timeout=3.0,
                 )
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(2.0)  # let the sit motion complete
             except Exception:
                 pass
             await self._conn.disconnect()
