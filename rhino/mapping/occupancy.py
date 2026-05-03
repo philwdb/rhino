@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import threading
+from pathlib import Path
 
 import numpy as np
 from numpy.typing import NDArray
@@ -17,8 +18,10 @@ _OBS_Z_MAX = 1.5
 
 
 class OccupancyMapper:
-    def __init__(self, cfg: MapConfig) -> None:
+    def __init__(self, cfg: MapConfig, map_path: Path | None = None) -> None:
         self._cfg = cfg
+        self._map_path = map_path
+        self._mapping_enabled: bool = False
         # Internal: log-odds floats.  0.0 = unknown (p=0.5).
         self._grid: NDArray[np.float32] = np.zeros(
             (cfg.height, cfg.width), dtype=np.float32
@@ -32,7 +35,37 @@ class OccupancyMapper:
         self._lo_max = math.log(cfg.log_odds_max / (1.0 - cfg.log_odds_max))
         self._lock = threading.Lock()
 
+    @property
+    def mapping_enabled(self) -> bool:
+        return self._mapping_enabled
+
+    def set_mapping(self, enabled: bool) -> None:
+        self._mapping_enabled = enabled
+
+    def save(self, path: Path | None = None) -> None:
+        target = path or self._map_path
+        if target is None:
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with self._lock:
+            grid_copy = self._grid.copy()
+        np.savez_compressed(target, grid=grid_copy)
+
+    def load(self, path: Path | None = None) -> bool:
+        target = path or self._map_path
+        if target is None or not target.exists():
+            return False
+        data = np.load(target)
+        loaded: NDArray[np.float32] = data["grid"]
+        if loaded.shape != self._grid.shape:
+            return False
+        with self._lock:
+            self._grid[:] = loaded
+        return True
+
     def update(self, scan: LidarScan, pose: Pose) -> None:
+        if not self._mapping_enabled:
+            return
         if scan.points.shape[0] == 0:
             return
 

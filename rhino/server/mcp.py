@@ -5,6 +5,7 @@ from __future__ import annotations
 from mcp.server.fastmcp import FastMCP
 
 from rhino.config import ServerConfig
+from rhino.mapping.occupancy import OccupancyMapper
 from rhino.navigation.explorer import FrontierExplorer
 from rhino.navigation.planner import Navigator
 from rhino.platforms.base import Goal, Platform
@@ -20,6 +21,7 @@ class McpServer:
         explorer: FrontierExplorer,
         storage: Storage,
         state: AppState,
+        mapper: OccupancyMapper,
         cfg: ServerConfig,
     ) -> None:
         self._platform = platform
@@ -27,6 +29,7 @@ class McpServer:
         self._explorer = explorer
         self._storage = storage
         self._state = state
+        self._mapper = mapper
         self._cfg = cfg
         self._mcp = self._build_mcp()
 
@@ -43,6 +46,7 @@ class McpServer:
         explorer = self._explorer
         storage = self._storage
         state = self._state
+        mapper = self._mapper
 
         @mcp.tool()
         def send_velocity(vx: float, vy: float = 0.0, omega: float = 0.0) -> str:
@@ -143,6 +147,18 @@ class McpServer:
                 return f"error: no POI matching '{label_or_id}'"
             await storage.delete_poi(match.id)
             return f"deleted '{match.label}'"
+
+        @mcp.tool()
+        def set_mapping(enabled: bool) -> str:
+            """Enable or disable map building. When disabled the loaded map is frozen."""
+            mapper.set_mapping(enabled)
+            return "mapping enabled" if enabled else "mapping disabled (map frozen)"
+
+        @mcp.tool()
+        def save_map() -> str:
+            """Save the current occupancy map to disk."""
+            mapper.save()
+            return "map saved"
 
         return mcp
 

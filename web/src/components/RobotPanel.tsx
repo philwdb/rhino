@@ -52,6 +52,8 @@ export default function RobotPanel() {
       <div className="robot-panel-body">
         <CameraSection />
         <div className="panel-divider" />
+        <MappingSection />
+        <div className="panel-divider" />
         <TeleopSection />
         <div className="panel-divider" />
         <CommandsSection />
@@ -71,6 +73,35 @@ function CameraSection() {
       alt="camera"
       onError={() => setError(true)}
     />
+  )
+}
+
+function MappingSection() {
+  const [enabled, setEnabled] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/map/mapping')
+      .then(r => r.json())
+      .then(d => setEnabled(d.enabled))
+      .catch(() => {})
+  }, [])
+
+  async function toggle() {
+    const next = !enabled
+    setEnabled(next)
+    await fetch('/api/map/mapping', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: next }),
+    }).catch(() => setEnabled(!next))
+  }
+
+  return (
+    <div className="mapping-section">
+      <button className={enabled ? 'active' : ''} onClick={toggle}>
+        ◉ Cartographer{enabled ? ' — ON' : ''}
+      </button>
+    </div>
   )
 }
 

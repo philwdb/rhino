@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -95,7 +96,9 @@ async def _run(cfg: RhinoConfig) -> None:
 
     state = AppState()
     rerun = RerunLogger(cfg.rerun)
-    mapper = OccupancyMapper(cfg.map)
+    map_path = Path(cfg.storage.map_path).expanduser()
+    mapper = OccupancyMapper(cfg.map, map_path=map_path)
+    mapper.load()
     costmap = Costmap(mapper, cfg.map)
     nav = Navigator(mapper, costmap, platform, cfg.nav)
     explorer = FrontierExplorer(mapper, nav)
@@ -109,10 +112,11 @@ async def _run(cfg: RhinoConfig) -> None:
     asyncio.create_task(explorer.run())
 
     api = ApiServer(state, mapper, nav, explorer, platform, storage, cfg.server)
-    mcp = McpServer(platform, nav, explorer, storage, state, cfg.server)
+    mcp = McpServer(platform, nav, explorer, storage, state, mapper, cfg.server)
     try:
         await asyncio.gather(api.serve(), mcp.serve())
     finally:
+        mapper.save()
         await platform.stop()
         await storage.close()
 

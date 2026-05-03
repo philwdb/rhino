@@ -38,6 +38,10 @@ class PlanModeRequest(BaseModel):
     mode: PlanMode
 
 
+class MappingRequest(BaseModel):
+    enabled: bool
+
+
 class PoiCreateRequest(BaseModel):
     label: str
     x: float | None = None
@@ -75,6 +79,10 @@ class ApiServer:
         )
         platform = self._platform
         state = self._state
+        mapper = self._mapper
+        nav = self._nav
+        explorer = self._explorer
+        storage = self._storage
 
         @app.get("/api/health")
         async def health() -> dict[str, str]:
@@ -113,12 +121,8 @@ class ApiServer:
                     "omega": status.omega,
                 },
                 "path": [[x, y] for x, y in nav.current_path],
+                "mapping_enabled": mapper.mapping_enabled,
             }
-
-        mapper = self._mapper
-        nav = self._nav
-        explorer = self._explorer
-        storage = self._storage
 
         @app.post("/api/navigate")
         async def navigate(req: NavigateRequest) -> dict[str, str]:
@@ -244,7 +248,22 @@ class ApiServer:
                 "resolution": mapper.resolution,
                 "width": W,
                 "height": H,
+                "mapping_enabled": mapper.mapping_enabled,
             }
+
+        @app.get("/api/map/mapping")
+        async def get_mapping() -> dict[str, object]:
+            return {"enabled": mapper.mapping_enabled}
+
+        @app.post("/api/map/mapping")
+        async def set_mapping(req: MappingRequest) -> dict[str, object]:
+            mapper.set_mapping(req.enabled)
+            return {"enabled": mapper.mapping_enabled}
+
+        @app.post("/api/map/save")
+        async def save_map() -> dict[str, str]:
+            mapper.save()
+            return {"status": "ok"}
 
         @app.get("/api/camera/stream")
         async def camera_stream() -> StreamingResponse:
@@ -320,6 +339,7 @@ _TELEOP_HTML = """<!DOCTYPE html>
 
 <div id="left">
   <img id="map" src="/api/map" alt="map" title="Click to navigate here">
+  <button id="btn-mapping" onclick="toggleMapping()" style="width:100%;margin-bottom:8px;">◉ Mapping</button>
   <div id="nav-status"></div>
   <div id="keys">
     <div></div><div class="key" id="kW">W</div><div></div>
@@ -365,6 +385,7 @@ const pressed = new Set();
 const keyMap = { KeyW:'W', KeyS:'S', KeyA:'A', KeyD:'D' };
 let exploring = false;
 let planMode = 'astar';
+let mappingOn = false;
 let lastVx = 0, lastOmega = 0;
 
 function post(url, body) {
@@ -465,6 +486,13 @@ function toggleMode() {
   document.getElementById('btn-mode').classList.toggle('on', planMode === 'direct');
 }
 
+function toggleMapping() {
+  mappingOn = !mappingOn;
+  post('/api/map/mapping', {enabled: mappingOn});
+  document.getElementById('btn-mapping').classList.toggle('on', mappingOn);
+  document.getElementById('btn-mapping').textContent = mappingOn ? '◉ Mapping ON' : '◉ Mapping';
+}
+
 // Poll at 5 Hz for responsive debug display.
 setInterval(() => {
   document.getElementById('map').src = '/api/map?' + Date.now();
@@ -477,6 +505,11 @@ setInterval(() => {
       document.getElementById('d-yaw').textContent = deg.toFixed(1) + '°';
       document.getElementById('d-yaw').className = 'dbg-val';
       drawCompass(p.yaw);
+    }
+    if (d.mapping_enabled !== undefined && d.mapping_enabled !== mappingOn) {
+      mappingOn = d.mapping_enabled;
+      document.getElementById('btn-mapping').classList.toggle('on', mappingOn);
+      document.getElementById('btn-mapping').textContent = mappingOn ? '◉ Mapping ON' : '◉ Mapping';
     }
   });
   fetch('/api/navigate/status').then(r => r.json()).then(d => {

@@ -310,6 +310,10 @@ button.danger:hover { background: #2a1a1a; }
   color: var(--muted); font-size: 12px;
 }
 
+/* ── Mapping mode ────────────────────────────────────── */
+.mapping-section { padding: 8px 12px; }
+.mapping-section button { width: 100%; }
+
 /* ── Teleop ──────────────────────────────────────────── */
 .teleop-tab { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 .dpad {

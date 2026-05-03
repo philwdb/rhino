@@ -46,6 +46,7 @@ class ServerConfig:
 @dataclass
 class StorageConfig:
     db_path: str = "~/.local/state/rhino/rhino.db"
+    map_path: str = "~/.local/state/rhino/map.npz"
 
 
 @dataclass
