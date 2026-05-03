@@ -69,19 +69,34 @@ class Go2Platform:
 
         ps = self._conn.datachannel.pub_sub
 
+        _lidar_count = 0
+        _odom_count = 0
+
         # --- lidar subscription ---
         def on_lidar(msg: dict[str, Any]) -> None:
+            nonlocal _lidar_count
+            _lidar_count += 1
             try:
                 points: np.ndarray = msg["data"]["data"]["points"]
+                if _lidar_count == 1:
+                    print(f"[go2] first lidar msg: {points.shape} points, "
+                          f"range x=[{points[:,0].min():.2f},{points[:,0].max():.2f}] "
+                          f"y=[{points[:,1].min():.2f},{points[:,1].max():.2f}]")
                 self._enqueue(
                     self.lidar_queue,
                     LidarScan(points=points.astype(np.float32), timestamp=time.time()),
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                if _lidar_count <= 3:
+                    print(f"[go2] lidar parse error (msg #{_lidar_count}): {e}")
+                    print(f"[go2] lidar msg keys: {list(msg.keys())}")
+                    if "data" in msg:
+                        print(f"[go2] lidar msg['data'] keys: {list(msg['data'].keys()) if isinstance(msg['data'], dict) else type(msg['data'])}")
 
         # --- odometry subscription ---
         def on_odom(msg: dict[str, Any]) -> None:
+            nonlocal _odom_count
+            _odom_count += 1
             try:
                 pose_data = msg["data"]["pose"]
                 x: float = pose_data["position"]["x"]
@@ -91,12 +106,16 @@ class Go2Platform:
                 oz: float = pose_data["orientation"]["z"]
                 ow: float = pose_data["orientation"]["w"]
                 yaw = math.atan2(2.0 * (ow * oz + ox * oy), 1.0 - 2.0 * (oy * oy + oz * oz))
+                if _odom_count == 1:
+                    print(f"[go2] first odom: x={x:.3f} y={y:.3f} yaw={yaw:.3f}")
                 self._enqueue(
                     self.odom_queue,
                     Pose(x=x, y=y, yaw=yaw, timestamp=time.time()),
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                if _odom_count <= 3:
+                    print(f"[go2] odom parse error (msg #{_odom_count}): {e}")
+                    print(f"[go2] odom msg keys: {list(msg.keys())}")
 
         # --- low-state subscription (battery + basic status) ---
         def on_lowstate(msg: dict[str, Any]) -> None:
