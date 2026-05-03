@@ -64,6 +64,10 @@ class Go2Platform:
         # video attribute is created inside connect() → add callback after
         self._conn.video.add_track_callback(on_video_track)
 
+        # Switch to native (lz4+numpy) decoder so lidar messages have {"points": ndarray}.
+        # The default libvoxel decoder returns mesh render data (positions/uvs/indices), not points.
+        self._conn.datachannel.set_decoder("native")
+
         # Enable full lidar stream (disables bandwidth-saving mode).
         await self._conn.datachannel.disableTrafficSaving(True)
 
