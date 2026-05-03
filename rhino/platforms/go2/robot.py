@@ -136,6 +136,14 @@ class Go2Platform:
 
         self._conn.video.switchVideoChannel(True)
 
+        # Stand up in case robot is in StandDown from a previous session.
+        ps.publish_without_callback(
+            RTC_TOPIC["SPORT_MOD"],
+            data={"header": {"identity": {"id": 1, "api_id": SPORT_CMD["StandUp"]}}, "parameter": ""},
+            msg_type="req",
+        )
+        await asyncio.sleep(2.0)
+
     async def stop(self) -> None:
         if self._conn is not None:
             try:
