@@ -138,6 +138,21 @@ class Go2Platform:
 
     async def stop(self) -> None:
         if self._conn is not None:
+            try:
+                # Stop moving then sit before disconnecting.
+                ps = self._conn.datachannel.pub_sub
+                ps.publish_without_callback(
+                    self._RTC_TOPIC["WIRELESS_CONTROLLER"],
+                    data={"lx": 0.0, "ly": 0.0, "rx": 0.0, "ry": 0.0},
+                )
+                ps.publish_without_callback(
+                    self._RTC_TOPIC["SPORT_MOD"],
+                    data={"header": {"identity": {"id": 1, "api_id": self._SPORT_CMD["StandDown"]}}, "parameter": ""},
+                    msg_type="req",
+                )
+                await asyncio.sleep(0.3)
+            except Exception:
+                pass
             await self._conn.disconnect()
             self._conn = None
 
