@@ -300,6 +300,9 @@ function sendVel() {
   post('/api/velocity', {vx, vy:0, omega});
 }
 
+// Heartbeat at 10 Hz — robot watchdog requires continuous commands or it stops.
+setInterval(sendVel, 100);
+
 document.addEventListener('keydown', e => {
   if (e.code === 'Space') { e.preventDefault(); pressed.clear(); sendVel(); return; }
   if (!(e.code in keyMap) || e.repeat) return;
