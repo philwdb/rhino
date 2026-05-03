@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rhino"
+version = "0.1.0"
+description = "Minimal robotics OS for Unitree Go2"
+requires-python = ">=3.12"
+dependencies = [
+    "unitree-webrtc-connect-leshy>=2.0.7",
+    "mujoco>=3.3.4",
+    "numpy>=1.26",
+    "scipy>=1.12",
+    "opencv-python>=4.9",
+    "rerun-sdk>=0.20.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sse-starlette>=2.0",
+    "mcp>=1.0",
+    "aiosqlite>=0.20",
+    "onnxruntime>=1.18",
+    "typer>=0.12",
+]
+
+[project.scripts]
+rhino = "rhino.main:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rhino"]

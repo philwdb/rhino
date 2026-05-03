@@ -1,0 +1,28 @@
+<?xml version="1.0" ?>
+<mujoco model="scene_empty">
+  <compiler angle="radian"/>
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.53 0.80 0.98" rgb2="0.15 0.40 0.70" width="800" height="800"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.65 0.65 0.65"
+      rgb2="0.80 0.80 0.80" markrgb="0.4 0.4 0.4" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="8 8" reflectance="0"/>
+  </asset>
+  <worldbody>
+    <geom name="floor" size="0 0 0.01" type="plane" material="groundplane"/>
+    <!-- obstacles for lidar scanning -->
+    <geom name="box_front" type="box" pos="2.0 0.0 0.3" size="0.3 0.5 0.3" rgba="0.8 0.2 0.2 1"/>
+    <geom name="box_left"  type="box" pos="0.5 2.0 0.4" size="0.5 0.3 0.4" rgba="0.2 0.7 0.2 1"/>
+    <geom name="box_right" type="box" pos="0.5 -2.0 0.35" size="0.4 0.3 0.35" rgba="0.2 0.2 0.8 1"/>
+    <geom name="box_back"  type="box" pos="-1.5 0.8 0.25" size="0.25 0.6 0.25" rgba="0.8 0.7 0.1 1"/>
+    <geom name="wall_far"  type="box" pos="4.0 0.0 0.75" size="0.1 4.0 0.75" rgba="0.55 0.55 0.55 1"/>
+  </worldbody>
+  <statistic center="1 -0.8 1.1" extent=".35"/>
+  <visual>
+    <headlight diffuse=".8 .8 .8" ambient=".3 .3 .3" specular="1 1 1"/>
+    <rgba force="1 0 0 1"/>
+    <global azimuth="140" elevation="-20"/>
+    <map force="0.01"/>
+    <scale forcewidth="0.3" contactwidth="0.5" contactheight="0.2"/>
+    <quality shadowsize="8192"/>
+  </visual>
+</mujoco>
