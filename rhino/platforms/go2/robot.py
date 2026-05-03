@@ -59,9 +59,10 @@ class Go2Platform:
                 except Exception:
                     break
 
-        self._conn.video.add_track_callback(on_video_track)
-
         await self._conn.connect()
+
+        # video attribute is created inside connect() → add callback after
+        self._conn.video.add_track_callback(on_video_track)
 
         # Enable full lidar stream (disables bandwidth-saving mode).
         await self._conn.datachannel.disableTrafficSaving(True)
