@@ -93,7 +93,8 @@ class Navigator:
 
             if self._mode is PlanMode.DIRECT:
                 self._path = [(pose.x, pose.y), (goal.x, goal.y)]
-                vx, vy, omega = compute_velocity(pose, goal.x, goal.y, goal.yaw, self._cfg)
+                tx, ty = _lookahead(self._path, pose.x, pose.y, self._cfg.lookahead_distance)
+                vx, vy, omega = compute_velocity(pose, tx, ty, None, self._cfg)
             else:
                 now = loop.time()
                 if not self._path or now - last_replan >= self._cfg.replan_interval:
