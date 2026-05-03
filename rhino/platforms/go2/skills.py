@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import math
-
 from rhino.navigation.planner import Navigator
 from rhino.platforms.base import Platform
 

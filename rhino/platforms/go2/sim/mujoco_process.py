@@ -25,7 +25,6 @@ from numpy.typing import NDArray
 from rhino.platforms.go2.sim.constants import (
     ASSETS_PATH,
     DEPTH_CAMERA_FOV,
-    LAUNCHER_PATH,
     LIDAR_FPS,
     LIDAR_VOXEL_SIZE,
     VIDEO_FPS,

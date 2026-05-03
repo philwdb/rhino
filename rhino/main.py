@@ -62,6 +62,12 @@ async def _odom_loop(
         rerun.log_pose(pose)
 
 
+async def _status_loop(platform: Platform, state: AppState) -> None:
+    while True:
+        state.latest_status = platform.get_status()
+        await asyncio.sleep(0.1)
+
+
 async def _run(cfg: RhinoConfig) -> None:
     if cfg.sim:
         from rhino.platforms.go2.sim.sim import MujocoGo2
@@ -85,6 +91,7 @@ async def _run(cfg: RhinoConfig) -> None:
     asyncio.create_task(_camera_loop(platform, rerun, state))
     asyncio.create_task(_lidar_loop(platform, mapper, state, rerun, loop))
     asyncio.create_task(_odom_loop(platform, nav, state, rerun))
+    asyncio.create_task(_status_loop(platform, state))
     asyncio.create_task(nav.run())
     asyncio.create_task(explorer.run())
 
