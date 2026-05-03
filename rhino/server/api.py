@@ -16,8 +16,9 @@ from rhino.config import ServerConfig
 from rhino.mapping.occupancy import OccupancyMapper
 from rhino.navigation.explorer import FrontierExplorer
 from rhino.navigation.planner import Navigator, PlanMode
-from rhino.platforms.base import Platform
+from rhino.platforms.base import Goal, Platform
 from rhino.server.state import AppState
+from rhino.storage import Storage
 
 
 class VelocityRequest(BaseModel):
@@ -36,6 +37,13 @@ class PlanModeRequest(BaseModel):
     mode: PlanMode
 
 
+class PoiCreateRequest(BaseModel):
+    label: str
+    x: float | None = None
+    y: float | None = None
+    z: float = 0.0
+
+
 class ApiServer:
     def __init__(
         self,
@@ -44,6 +52,7 @@ class ApiServer:
         nav: Navigator,
         explorer: FrontierExplorer,
         platform: Platform,
+        storage: Storage,
         cfg: ServerConfig,
     ) -> None:
         self._state = state
@@ -51,6 +60,7 @@ class ApiServer:
         self._nav = nav
         self._explorer = explorer
         self._platform = platform
+        self._storage = storage
         self._cfg = cfg
         self._app = self._build_app()
 
@@ -103,10 +113,10 @@ class ApiServer:
         mapper = self._mapper
         nav = self._nav
         explorer = self._explorer
+        storage = self._storage
 
         @app.post("/api/navigate")
         async def navigate(req: NavigateRequest) -> dict[str, str]:
-            from rhino.platforms.base import Goal
             nav.set_goal(Goal(x=req.x, y=req.y, yaw=req.yaw))
             return {"status": "ok"}
 
@@ -139,6 +149,41 @@ class ApiServer:
         async def explore_stop() -> dict[str, str]:
             explorer.set_enabled(False)
             return {"status": "ok"}
+
+        @app.get("/api/pois")
+        async def list_pois() -> list[dict[str, object]]:
+            pois = await storage.list_pois()
+            return [
+                {"id": p.id, "label": p.label, "x": p.x, "y": p.y, "z": p.z}
+                for p in pois
+            ]
+
+        @app.post("/api/pois")
+        async def create_poi(req: PoiCreateRequest) -> dict[str, object]:
+            x, y = req.x, req.y
+            if x is None or y is None:
+                pose = state.latest_pose
+                if pose is None:
+                    from fastapi import HTTPException
+                    raise HTTPException(422, "no pose available — provide x and y")
+                x, y = pose.x, pose.y
+            poi = await storage.add_poi(req.label, x, y, req.z)
+            return {"id": poi.id, "label": poi.label, "x": poi.x, "y": poi.y, "z": poi.z}
+
+        @app.delete("/api/pois/{poi_id}")
+        async def delete_poi(poi_id: str) -> dict[str, object]:
+            deleted = await storage.delete_poi(poi_id)
+            return {"deleted": deleted}
+
+        @app.post("/api/pois/{poi_id}/navigate")
+        async def navigate_to_poi(poi_id: str) -> dict[str, object]:
+            pois = await storage.list_pois()
+            poi = next((p for p in pois if p.id == poi_id), None)
+            if poi is None:
+                from fastapi import HTTPException
+                raise HTTPException(404, f"poi {poi_id!r} not found")
+            nav.set_goal(Goal(x=poi.x, y=poi.y))
+            return {"status": "ok", "label": poi.label, "x": poi.x, "y": poi.y}
 
         @app.get("/api/map")
         async def get_map() -> Response:
