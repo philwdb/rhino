@@ -6,6 +6,7 @@ import asyncio
 import heapq
 import math
 from collections import deque
+from enum import Enum
 
 import numpy as np
 from numpy.typing import NDArray
@@ -15,6 +16,11 @@ from rhino.mapping.costmap import Costmap
 from rhino.mapping.occupancy import OccupancyMapper
 from rhino.navigation.controller import compute_velocity
 from rhino.platforms.base import Goal, Platform, Pose
+
+
+class PlanMode(str, Enum):
+    ASTAR = "astar"
+    DIRECT = "direct"
 
 
 class Navigator:
@@ -31,16 +37,24 @@ class Navigator:
         self._cfg = cfg
         self._goal: Goal | None = None
         self._pose: Pose | None = None
+        self._path: list[tuple[float, float]] = []
+        self._mode: PlanMode = PlanMode.ASTAR
 
     def update_pose(self, pose: Pose) -> None:
         self._pose = pose
 
     def set_goal(self, goal: Goal) -> None:
         self._goal = goal
+        self._path = []
 
     def clear_goal(self) -> None:
         self._goal = None
+        self._path = []
         self._platform.send_vel(0.0, 0.0, 0.0)
+
+    def set_mode(self, mode: PlanMode) -> None:
+        self._mode = mode
+        self._path = []
 
     @property
     def current_goal(self) -> Goal | None:
@@ -50,8 +64,15 @@ class Navigator:
     def current_pose(self) -> Pose | None:
         return self._pose
 
+    @property
+    def current_path(self) -> list[tuple[float, float]]:
+        return self._path
+
+    @property
+    def mode(self) -> PlanMode:
+        return self._mode
+
     async def run(self) -> None:
-        path: list[tuple[float, float]] = []
         last_replan = 0.0
         loop = asyncio.get_running_loop()
 
@@ -67,21 +88,25 @@ class Navigator:
             if math.hypot(goal.x - pose.x, goal.y - pose.y) < self._cfg.arrival_tolerance:
                 self._platform.send_vel(0.0, 0.0, 0.0)
                 self._goal = None
-                path = []
+                self._path = []
                 continue
 
-            now = loop.time()
-            if not path or now - last_replan >= self._cfg.replan_interval:
-                new_path = await loop.run_in_executor(None, self._plan, pose, goal)
-                if new_path is not None:
-                    path = new_path
-                last_replan = now
-
-            if not path:
+            if self._mode is PlanMode.DIRECT:
+                self._path = [(pose.x, pose.y), (goal.x, goal.y)]
                 vx, vy, omega = compute_velocity(pose, goal.x, goal.y, goal.yaw, self._cfg)
             else:
-                tx, ty = _lookahead(path, pose.x, pose.y, self._cfg.lookahead_distance)
-                vx, vy, omega = compute_velocity(pose, tx, ty, None, self._cfg)
+                now = loop.time()
+                if not self._path or now - last_replan >= self._cfg.replan_interval:
+                    new_path = await loop.run_in_executor(None, self._plan, pose, goal)
+                    if new_path is not None:
+                        self._path = new_path
+                    last_replan = now
+
+                if not self._path:
+                    vx, vy, omega = compute_velocity(pose, goal.x, goal.y, goal.yaw, self._cfg)
+                else:
+                    tx, ty = _lookahead(self._path, pose.x, pose.y, self._cfg.lookahead_distance)
+                    vx, vy, omega = compute_velocity(pose, tx, ty, None, self._cfg)
 
             self._platform.send_vel(vx, vy, omega)
 

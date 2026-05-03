@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import io
+import math
 
 import cv2
 import numpy as np
@@ -15,10 +15,9 @@ from pydantic import BaseModel
 from rhino.config import ServerConfig
 from rhino.mapping.occupancy import OccupancyMapper
 from rhino.navigation.explorer import FrontierExplorer
-from rhino.navigation.planner import Navigator
+from rhino.navigation.planner import Navigator, PlanMode
 from rhino.platforms.base import Platform
 from rhino.server.state import AppState
-from rhino.storage import Storage
 
 
 class VelocityRequest(BaseModel):
@@ -27,14 +26,14 @@ class VelocityRequest(BaseModel):
     omega: float = 0.0
 
 
-class CmdRequest(BaseModel):
-    command: str
-
-
 class NavigateRequest(BaseModel):
     x: float
     y: float
     yaw: float | None = None
+
+
+class PlanModeRequest(BaseModel):
+    mode: PlanMode
 
 
 class ApiServer:
@@ -45,7 +44,6 @@ class ApiServer:
         nav: Navigator,
         explorer: FrontierExplorer,
         platform: Platform,
-        storage: Storage,
         cfg: ServerConfig,
     ) -> None:
         self._state = state
@@ -53,7 +51,6 @@ class ApiServer:
         self._nav = nav
         self._explorer = explorer
         self._platform = platform
-        self._storage = storage
         self._cfg = cfg
         self._app = self._build_app()
 
@@ -115,6 +112,7 @@ class ApiServer:
 
         @app.post("/api/navigate/cancel")
         async def navigate_cancel() -> dict[str, str]:
+            explorer.set_enabled(False)
             nav.clear_goal()
             return {"status": "ok"}
 
@@ -124,7 +122,13 @@ class ApiServer:
             return {
                 "goal": {"x": g.x, "y": g.y, "yaw": g.yaw} if g else None,
                 "exploring": explorer.enabled,
+                "mode": nav.mode,
             }
+
+        @app.post("/api/navigate/mode")
+        async def set_mode(req: PlanModeRequest) -> dict[str, str]:
+            nav.set_mode(req.mode)
+            return {"status": "ok", "mode": req.mode}
 
         @app.post("/api/explore/start")
         async def explore_start() -> dict[str, str]:
@@ -139,18 +143,42 @@ class ApiServer:
         @app.get("/api/map")
         async def get_map() -> Response:
             grid = mapper.get_grid()                        # float32 0-1
-            img = (255.0 * (1.0 - grid)).astype(np.uint8)  # free=white, occ=black
-            img = img[::-1, :]                              # north-up
+            gray = (255.0 * (1.0 - grid)).astype(np.uint8)  # free=white, occ=black
+            gray = gray[::-1, :]                             # north-up
+            img = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+
+            H, W = img.shape[:2]
+            ox, oy = mapper.origin
+            res = mapper.resolution
+
+            def w2i(wx: float, wy: float) -> tuple[int, int]:
+                c = int((wx - ox) / res)
+                r = H - 1 - int((wy - oy) / res)
+                return (c, r)
+
+            # Draw A* path as orange polyline.
+            path = nav.current_path
+            if len(path) >= 2:
+                pts = [w2i(x, y) for x, y in path]
+                for p1, p2 in zip(pts, pts[1:]):
+                    cv2.line(img, p1, p2, (0, 140, 255), 1)
+
+            # Draw robot position: cyan dot + white heading arrow.
+            pose = state.latest_pose
+            if pose is not None:
+                cx, cy = w2i(pose.x, pose.y)
+                cv2.circle(img, (cx, cy), 4, (255, 220, 0), -1)
+                arrow_len = 8
+                ax = int(cx + arrow_len * math.cos(pose.yaw))
+                ay = int(cy - arrow_len * math.sin(pose.yaw))  # row decreases northward
+                cv2.arrowedLine(img, (cx, cy), (ax, ay), (255, 255, 255), 1, tipLength=0.4)
+
             _, buf = cv2.imencode(".png", img)
             return Response(content=buf.tobytes(), media_type="image/png")
 
         @app.get("/", response_class=HTMLResponse)
         async def teleop_ui() -> str:
             return _TELEOP_HTML
-
-        # TODO Phase 4: /api/events (SSE), /api/pov,
-        #               /api/navigate, /api/explore,
-        #               /api/pois CRUD + navigation
 
         return app
 
@@ -202,6 +230,7 @@ _TELEOP_HTML = """<!DOCTYPE html>
   <button id="btn-stop" onclick="post('/api/stop')">■ Stop</button>
   <button id="btn-cancel" onclick="post('/api/navigate/cancel')">✕ Cancel nav</button>
   <button id="btn-explore" onclick="toggleExplore()">⟳ Explore</button>
+  <button id="btn-mode" onclick="toggleMode()">mode: A*</button>
 </div>
 <div id="hint">W/S forward/back &nbsp; A/D rotate &nbsp; SPACE stop &nbsp; click map to navigate</div>
 <script>
@@ -209,6 +238,7 @@ const VX = 0.4, OMEGA = 0.8;
 const pressed = new Set();
 const keyMap = { KeyW:'W', KeyS:'S', KeyA:'A', KeyD:'D' };
 let exploring = false;
+let planMode = 'astar';
 
 function post(url, body) {
   return fetch(url, { method:'POST',
@@ -261,6 +291,13 @@ function toggleExplore() {
   document.getElementById('btn-explore').textContent = exploring ? '⟳ Exploring…' : '⟳ Explore';
 }
 
+function toggleMode() {
+  planMode = planMode === 'astar' ? 'direct' : 'astar';
+  post('/api/navigate/mode', {mode: planMode});
+  document.getElementById('btn-mode').textContent = 'mode: ' + (planMode === 'astar' ? 'A*' : 'direct');
+  document.getElementById('btn-mode').classList.toggle('on', planMode === 'direct');
+}
+
 setInterval(() => {
   document.getElementById('map').src = '/api/map?' + Date.now();
   fetch('/api/state').then(r => r.json()).then(d => {
@@ -279,6 +316,11 @@ setInterval(() => {
       exploring = d.exploring;
       document.getElementById('btn-explore').classList.toggle('on', exploring);
       document.getElementById('btn-explore').textContent = exploring ? '⟳ Exploring…' : '⟳ Explore';
+    }
+    if (d.mode && d.mode !== planMode) {
+      planMode = d.mode;
+      document.getElementById('btn-mode').textContent = 'mode: ' + (planMode === 'astar' ? 'A*' : 'direct');
+      document.getElementById('btn-mode').classList.toggle('on', planMode === 'direct');
     }
   });
 }, 1000);

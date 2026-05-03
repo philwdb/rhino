@@ -98,7 +98,7 @@ async def _run(cfg: RhinoConfig) -> None:
     asyncio.create_task(nav.run())
     asyncio.create_task(explorer.run())
 
-    api = ApiServer(state, mapper, nav, explorer, platform, storage, cfg.server)
+    api = ApiServer(state, mapper, nav, explorer, platform, cfg.server)
     mcp = McpServer(platform, nav, explorer, storage, state, cfg.server)
     try:
         await asyncio.gather(api.serve(), mcp.serve())
