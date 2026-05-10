@@ -72,9 +72,6 @@ class Go2Platform:
         # The default libvoxel decoder returns mesh render data (positions/uvs/indices), not points.
         self._conn.datachannel.set_decoder("native")
 
-        # Enable full lidar stream (disables bandwidth-saving mode).
-        await self._conn.datachannel.disableTrafficSaving(True)
-
         ps = self._conn.datachannel.pub_sub
 
         _lidar_count = 0
@@ -137,6 +134,16 @@ class Go2Platform:
         ps.subscribe(RTC_TOPIC["ULIDAR_ARRAY"], on_lidar)
         ps.subscribe(RTC_TOPIC["ROBOTODOM"], on_odom)
         ps.subscribe(RTC_TOPIC["LOW_STATE"], on_lowstate)
+
+        # The dog only streams the full lidar packets if a subscriber is already
+        # registered when traffic-saving is turned off — so this MUST come after
+        # the ULIDAR_ARRAY subscribe above. Belt-and-braces: also flip the
+        # ULIDAR_SWITCH on, which some firmware revisions require.
+        await self._conn.datachannel.disableTrafficSaving(True)
+        try:
+            ps.publish_without_callback(RTC_TOPIC["ULIDAR_SWITCH"], "ON")
+        except Exception as e:
+            print(f"[go2] ULIDAR_SWITCH publish failed (non-fatal): {e}")
 
         self._conn.video.switchVideoChannel(True)
 
