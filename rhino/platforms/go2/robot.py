@@ -38,10 +38,9 @@ class Go2Platform:
         self._RTC_TOPIC = RTC_TOPIC
         self._SPORT_CMD = SPORT_CMD
 
-        self._conn = UnitreeWebRTCConnection(
-            WebRTCConnectionMethod.LocalSTA,
-            ip=self._cfg.ip,
-        )
+        method = WebRTCConnectionMethod.LocalAP if self._cfg.ap else WebRTCConnectionMethod.LocalSTA
+        # In AP mode the SDK hardcodes 192.168.12.1; passing ip is harmless.
+        self._conn = UnitreeWebRTCConnection(method, ip=self._cfg.ip)
 
         # --- video track callback ---
         async def on_video_track(track: Any) -> None:
@@ -141,20 +140,36 @@ class Go2Platform:
 
         self._conn.video.switchVideoChannel(True)
 
-        # Stand up if robot is in StandDown from a previous session.
-        # Must use publish_request_new (awaited) so the robot properly acks the
-        # sport command before we start sending velocity commands.
+        # Switch motion mode to "normal" so SPORT_MOD / WIRELESS_CONTROLLER
+        # commands are accepted. Newer firmwares boot in "ai" / "mcf" modes
+        # which silently drop sport commands. api_id 1002 = SelectMode.
+        import json as _json
         try:
-            await asyncio.wait_for(
+            resp = await asyncio.wait_for(
+                ps.publish_request_new(
+                    RTC_TOPIC["MOTION_SWITCHER"],
+                    {"api_id": 1002, "parameter": _json.dumps({"name": "normal"})},
+                ),
+                timeout=5.0,
+            )
+            print(f"[go2] motion mode switch → normal: {resp}")
+            await asyncio.sleep(3.0)  # mode switch can briefly disable sport
+        except Exception as e:
+            print(f"[go2] motion mode switch failed: {e}")
+
+        # Stand up if robot is in StandDown from a previous session.
+        try:
+            resp = await asyncio.wait_for(
                 ps.publish_request_new(
                     RTC_TOPIC["SPORT_MOD"],
                     {"api_id": SPORT_CMD["RecoveryStand"]},
                 ),
                 timeout=5.0,
             )
+            print(f"[go2] RecoveryStand: {resp}")
             await asyncio.sleep(2.0)  # let the stand-up motion complete
-        except Exception:
-            pass  # already standing — RecoveryStand is a no-op in that case
+        except Exception as e:
+            print(f"[go2] RecoveryStand failed: {e}")
 
     async def stop(self) -> None:
         if self._conn is not None:

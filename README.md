@@ -267,18 +267,88 @@ No `openai`, no `open3d`, no `aiohttp`, no `dimos-lcm`.
 **Requirements:** [uv](https://docs.astral.sh/uv/) · Node.js 18+
 
 ```bash
-# Backend
-uv sync
-uv run rhino --sim                          # simulation (MuJoCo)
-uv run rhino --robot-ip 192.168.123.161     # real Go2
-
-# Dev frontend (separate terminal) — proxies /api → localhost:8000
-cd web
-npm install                                 # first time only
-npm run dev                                 # http://localhost:5173
+uv sync                       # install python deps
+cd web && npm install         # first time only — frontend deps
 ```
 
-The legacy single-page teleop UI is still served at `http://localhost:8000` by the backend.
+### Simulation
+
+```bash
+uv run rhino --sim
+```
+
+### Real Go2
+
+The Go2 supports three connection modes; rhino covers two of them:
+
+| Mode | When to use | rhino flag |
+|---|---|---|
+| **Wired (STA-Ethernet)** | Cable from PC → Go2's RJ45. Fixed IP `192.168.123.161`. | `--robot-ip 192.168.123.161` |
+| **WiFi (STA)** | Go2 has joined your LAN via the Unitree app's *Network → Connect to WiFi*. IP assigned by your router. | `--robot-ip <discovered-ip>` |
+| **WiFi (AP)** | Go2 broadcasts its own SSID `Unitree-Go-XXXXXX`; PC joins it. Hardcoded IP `192.168.12.1`. | `--ap` |
+
+#### 1. Find the Go2 on your WiFi (STA mode only)
+
+If the dog is on your LAN but you don't know its IP, use Unitree's multicast discovery:
+
+```bash
+uv run python -c "from unitree_webrtc_connect.multicast_scanner import discover_ip_sn; print(discover_ip_sn())"
+# → {'B42D4000XXXXXXXX': '192.168.x.y'}
+```
+
+#### 2. Start the backend
+
+```bash
+# WiFi (STA) — replace IP with what discovery returned
+uv run rhino --robot-ip 192.168.x.y --no-viz
+
+# WiFi (AP) — connect your laptop to the dog's SSID first, then:
+uv run rhino --ap --no-viz
+
+# Wired
+uv run rhino --robot-ip 192.168.123.161 --no-viz
+```
+
+Pass `--no-viz` unless you actively want the Rerun viewer — see *Troubleshooting* below.
+
+On a clean connect you should see:
+
+```
+🟢 Peer Connection State    : connected
+[go2] motion mode switch → normal: ... status.code: 0 or 7004
+[go2] first odom: x=... y=... yaw=...
+[go2] RecoveryStand: ... status.code: 0
+```
+
+The dog auto-stands on connect and auto-sits on shutdown (Ctrl+C).
+
+#### 3. Start the frontend (separate terminal)
+
+```bash
+cd web && npm run dev          # http://localhost:5173
+```
+
+The legacy single-page teleop UI is also served at `http://localhost:8000`.
+
+---
+
+## Troubleshooting
+
+**`http://localhost:8000` hangs / `/api/health` times out.**
+The Rerun SDK's batcher has filled and is blocking the asyncio loop (look for `batcher_output: Sender has been blocked for over 5 seconds` in the backend log). Restart with `--no-viz`. The viewer is optional; the web dashboard and MCP server work without it.
+
+**Sport commands (`StandUp`, `Hello`, …) get `status.code: 0` but the dog does nothing.**
+Newer Go2 firmwares boot in `mcf` / `ai` mode, where `SPORT_MOD` requests are silently dropped. `Go2Platform.start()` now switches to `normal` mode automatically via `MOTION_SWITCHER` (api_id 1002) before issuing `RecoveryStand`. If you've added a custom platform, replicate that switch.
+
+**The dog's status light blinks red.**
+- *Slow blink* → low battery (typically <30%). Charge it.
+- *Fast blink* → motor protection / fault. Power-cycle the dog and reconnect.
+
+**`Connection refused` when connecting via WiFi.**
+You're on the wrong network. AP mode requires you join `Unitree-Go-XXXXXX`; STA mode requires the dog and your PC to be on the same LAN. ICMP `ping` to `192.168.12.1` (AP) or the discovered IP (STA) should succeed before you launch rhino.
+
+**`is_standing: false` in `/api/state` even though the dog is standing.**
+That field is currently a hardcoded default — `Go2Platform` doesn't populate it from `LOW_STATE`. Telemetry that *is* live: `pose.{x,y,yaw}`, `status.battery_pct`.
 
 ---
 

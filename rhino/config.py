@@ -11,6 +11,7 @@ class SimConfig:
 class RobotConfig:
     ip: str = "192.168.123.161"
     timeout: float = 10.0
+    ap: bool = False  # True → connect via Go2 WiFi AP (forces ip=192.168.12.1)
 
 
 @dataclass
@@ -53,6 +54,7 @@ class StorageConfig:
 class RerunConfig:
     app_id: str = "rhino"
     connect: bool = False
+    enabled: bool = True
 
 
 @dataclass

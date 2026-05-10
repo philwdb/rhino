@@ -15,6 +15,9 @@ from rhino.platforms.base import CameraFrame, LidarScan, Pose
 
 class RerunLogger:
     def __init__(self, cfg: RerunConfig) -> None:
+        self._enabled = cfg.enabled
+        if not self._enabled:
+            return
         rr.init(cfg.app_id, spawn=not cfg.connect)
         if cfg.connect:
             rr.connect()
@@ -32,6 +35,8 @@ class RerunLogger:
         )
 
     def log_camera(self, frame: CameraFrame) -> None:
+        if not self._enabled:
+            return
         import cv2
         buf = np.frombuffer(frame.data, dtype=np.uint8)
         bgr = cv2.imdecode(buf, cv2.IMREAD_COLOR)
@@ -40,10 +45,14 @@ class RerunLogger:
         rr.log("camera/pov", rr.Image(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)))
 
     def log_lidar(self, scan: LidarScan) -> None:
+        if not self._enabled:
+            return
         if scan.points.shape[0] > 0:
             rr.log("world/lidar", rr.Points3D(scan.points))
 
     def log_pose(self, pose: Pose) -> None:
+        if not self._enabled:
+            return
         quat_w = math.cos(pose.yaw / 2)
         quat_z = math.sin(pose.yaw / 2)
 
@@ -77,6 +86,8 @@ class RerunLogger:
         origin: tuple[float, float],
         resolution: float,
     ) -> None:
+        if not self._enabled:
+            return
         # Greyscale: free→white(255), unknown→grey(128), occupied→black(0).
         img = (255.0 * (1.0 - grid)).astype(np.uint8)
         # Flip rows so that map north (max y) is at the top of the image.

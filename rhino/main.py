@@ -125,23 +125,25 @@ async def _run(cfg: RhinoConfig) -> None:
 def cli(
     sim: bool = typer.Option(False, "--sim", help="Run in simulation mode"),
     robot_ip: Optional[str] = typer.Option(None, "--robot-ip", help="Go2 IP address"),
+    ap: bool = typer.Option(False, "--ap", help="Connect via the Go2 WiFi AP (192.168.12.1)"),
     viewer: str = typer.Option("none", "--viewer", help="MuJoCo viewer: none | passive"),
+    no_viz: bool = typer.Option(False, "--no-viz", help="Disable Rerun viewer (avoids backpressure stalls)"),
     port: int = typer.Option(8000, "--port", help="API server port"),
     mcp_port: int = typer.Option(8001, "--mcp-port", help="MCP server port"),
 ) -> None:
-    if not sim and robot_ip is None:
-        typer.echo("Error: provide --sim or --robot-ip", err=True)
+    if not sim and not ap and robot_ip is None:
+        typer.echo("Error: provide --sim, --ap, or --robot-ip", err=True)
         raise typer.Exit(1)
 
     cfg = RhinoConfig(
         sim=sim,
         sim_cfg=SimConfig(viewer=viewer),
-        robot=RobotConfig(ip=robot_ip or "192.168.123.161"),
+        robot=RobotConfig(ip=robot_ip or ("192.168.12.1" if ap else "192.168.123.161"), ap=ap),
         map=MapConfig(),
         nav=NavConfig(),
         server=ServerConfig(port=port, mcp_port=mcp_port),
         storage=StorageConfig(),
-        rerun=RerunConfig(),
+        rerun=RerunConfig(enabled=not no_viz),
     )
     asyncio.run(_run(cfg))
 
