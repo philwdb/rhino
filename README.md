@@ -273,9 +273,18 @@ cd web && npm install         # first time only — frontend deps
 
 ### Simulation
 
+#### 1. Start the Backend
+
 ```bash
 uv run rhino --sim
 ```
+
+#### 2. Start the frontend
+
+```bash
+cd web && npm run dev          # http://localhost:5173
+```
+
 
 ### Real Go2
 
